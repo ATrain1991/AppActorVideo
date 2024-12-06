@@ -46,6 +46,46 @@ def download_movie_posters_omdb(movie_titles, output_folder,api_key=Master_api_k
         else:
             print(f"No poster found for: {title}")
             return False
+def download_single_poster_omdb(movie_title, api_key=Master_api_key):
+    """
+    Downloads a single movie poster from OMDB API.
+    
+    Args:
+        movie_title (str): Title of the movie to get poster for
+        api_key (str): OMDB API key (defaults to Master_api_key)
+        
+    Returns:
+        bytes: Raw image data if poster was found and downloaded successfully
+        None: If poster could not be found or downloaded
+    """
+    base_url = "http://www.omdbapi.com/"
+    
+    # Query OMDB API
+    params = {
+        'apikey': api_key,
+        't': movie_title,
+        'plot': 'short',
+        'r': 'json'
+    }
+    response = requests.get(base_url, params=params)
+    movie_data = response.json()
+
+    # Check if movie found and has poster
+    if movie_data.get('Response') == 'True' and movie_data.get('Poster') != 'N/A':
+        poster_url = movie_data['Poster']
+        
+        try:
+            # Download image
+            img_data = requests.get(poster_url).content
+            return img_data
+            
+        except Exception as e:
+            print(f"Error downloading poster for {movie_title}: {str(e)}")
+            return None
+    else:
+        print(f"No poster found for: {movie_title}")
+        return None
+
 
 def get_genre_from_omdb(api_key, movie_title):
     return get_movie_data(api_key, movie_title).get('Genre', None)
