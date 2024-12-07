@@ -189,8 +189,8 @@ class ShortsGenerator:
     
     def draw_movie_info(self, draw: ImageDraw, base_frame: Image, movie: Movie, y_pos: int):
         title_y = y_pos + (self.row_height // 2) - 15
-        font = self.get_font(size=50)  # Increased from 30
-        title_font = self.get_font(size=60)  # Increased from 40
+        font = self.get_font(size=5000)  # Increased from 30
+        title_font = self.get_font(size=6000)  # Increased from 40
         
         # Draw box office
         box_office_text = movie.get_display_box_office()
@@ -239,13 +239,34 @@ class ShortsGenerator:
         draw.text((x + width//4, y + height//3), "?",
                  fill=(150, 150, 150), font=self.get_font(size=font_size))
     
-    def get_font(self, size=30):
+    def get_font(self, size=30000):
+        # Ensure size is actually used when loading fonts
         try:
-            return ImageFont.truetype("Arial.ttf", size)
+            font = ImageFont.truetype("Arial.ttf", size)
+            # Verify the font size matches what was requested
+            test_text = "X"
+            bbox = font.getbbox(test_text)
+            actual_height = bbox[3] - bbox[1]
+            if abs(actual_height - size) > 2:  # Allow small rounding differences
+                # Adjust size until we get the desired height
+                adjustment = size / actual_height
+                size = int(size * adjustment)
+                font = ImageFont.truetype("Arial.ttf", size)
+            return font
         except:
             try:
-                return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+                # Same size verification for DejaVu
+                test_text = "X"
+                bbox = font.getbbox(test_text)
+                actual_height = bbox[3] - bbox[1]
+                if abs(actual_height - size) > 2:
+                    adjustment = size / actual_height
+                    size = int(size * adjustment)
+                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
+                return font
             except:
+                # For default font, we can't control size
                 return ImageFont.load_default()
     
 
@@ -264,8 +285,16 @@ class ShortsGenerator:
             show_descriptor = True
         
         if show_descriptor and poster_index >= 0:
-            descriptor_font = self.get_font(size=2060)  # Increased from 40
-            base_draw.text((250, y_pos), descriptor, fill=(200, 200, 200), font=descriptor_font)
+            # Use a more reasonable font size
+            descriptor_font = self.get_font(size=260)  # Adjusted from 2060
+            
+            # Calculate text position to align with poster top
+            text_y = y_pos + 10  # Small padding from top of poster
+            
+            # Draw the descriptor text
+            base_draw.text((self.poster_width + 40, text_y), descriptor, 
+                          fill=(200, 200, 200), 
+                          font=descriptor_font)
         
         # Handle poster visibility and animation
         show_poster = False
@@ -347,7 +376,7 @@ class ShortsGenerator:
         return result.convert('RGB')
 
     def generate_video(self, actor: Actor, movies_with_descriptors: List[Tuple[Movie, str]], 
-                      output_path: str, progress_callback: Optional[Callable[[float], None]] = None):
+                    output_path: str, progress_callback: Optional[Callable[[float], None]] = None):
         def make_frame(t):
             progress = t / self.duration
             if progress_callback:
@@ -357,8 +386,60 @@ class ShortsGenerator:
         
         clip = ColorClip(size=(self.width, self.height), color=self.background_color, duration=self.duration)
         clip = clip.set_make_frame(make_frame)
-        clip.write_videofile(output_path, fps=self.fps, codec='libx264', audio=False)
-    def generate_video_helper(self, actor: Actor, movies: List[Movie] = None, movies_with_descriptors: List[Tuple[Movie, str]] = None,output_path = "", progress_callback: Optional[Callable[[float], None]] = None):
+        
+        # Common video settings
+        bitrate = "15000k"  # Adjust based on your quality needs
+        
+        try:
+            # Try CPU encoding first with optimized settings
+            print("Using CPU encoding with x264...")
+            ffmpeg_params = [
+                '-c:v', 'libx264',
+                '-preset', 'medium',  # Balance between speed and compression
+                '-crf', '23',        # Constant Rate Factor (18-28 is good, lower = better quality)
+                '-pix_fmt', 'yuv420p',  # Required for compatibility
+                '-movflags', '+faststart',  # Enable streaming
+                '-b:v', bitrate,
+                '-maxrate', bitrate,
+                '-bufsize', f"{int(bitrate[:-1])*2}k",
+                '-profile:v', 'high',
+                '-level', '4.2'
+            ]
+            
+            clip.write_videofile(
+                output_path,
+                fps=self.fps,
+                codec='libx264',
+                ffmpeg_params=ffmpeg_params,
+                audio=False,
+                threads=4  # Adjust based on your CPU
+            )
+            return
+            
+        except Exception as e:
+            print(f"CPU encoding failed: {e}")
+            print("Trying alternative encoding settings...")
+            
+            try:
+                # Simplified fallback settings
+                clip.write_videofile(
+                    output_path,
+                    fps=self.fps,
+                    codec='libx264',
+                    preset='medium',
+                    bitrate=bitrate,
+                    audio=False
+                )
+                return
+                
+            except Exception as e:
+                print(f"Alternative encoding failed: {e}")
+                print("Please ensure ffmpeg is properly installed and try again.")
+                raise
+
+    def generate_video_helper(self, actor: Actor, movies: List[Movie] = None, 
+                            movies_with_descriptors: List[Tuple[Movie, str]] = None,
+                            output_path = "", progress_callback: Optional[Callable[[float], None]] = None):
         if movies_with_descriptors is None:
             if movies is None:
                 print("no movies provided")
@@ -370,22 +451,20 @@ class ShortsGenerator:
                 (movies[3], "Audience Favorite"),
                 (movies[4], "Critics Favorite")
             ]
-        if output_path is "":
-            output_path =f"{actor.name} quiz"
+        if output_path == "":
+            output_path = f"{actor.name} quiz.mp4"  # Added .mp4 extension
+        
         def update_progress(progress):
             sys.stdout.write(f"\rProgress: {progress*100:.1f}%")
             sys.stdout.flush()
-
-        generator = ShortsGenerator(duration=20, title_phase_percentage=30)
-        generator.generate_video(actor, movies_with_descriptors, output_path, update_progress)
 if __name__ == "__main__":
     movie1 = Movie("Moana 2", "2024", "100M", "85%", "90%","")
-    movie2 = Movie("Matrix", "2023", "150M", "75%", "80%","")
+    movie2 = Movie("The Matrix", "2023", "150M", "75%", "80%","")
     movie3 = Movie("Alien", "2022", "200M", "95%", "100%","")
-    movie4 = Movie("Red", "2021", "120M", "80%", "85%","")
+    movie4 = Movie("Red", "2021", "120M", "41%", "85%","")
     movie5 = Movie("Moana", "2020", "180M", "90%", "95%","")
     movies = [movie1, movie2, movie3, movie4, movie5]
-    actor = Actor("Dwayne Johnson", movies, "actor_image.jpg")
+    actor = Actor("Dwayne Johnson", movies, "Dwayne_Johnson.jpg")
     movies_with_descriptors = [
         (movie1, "Critics Least Favorite"),
         (movie2, "Audience Least Favorite"),
