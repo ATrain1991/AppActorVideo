@@ -97,7 +97,7 @@ class ShortsGenerator:
     
     def draw_clue_counter(self, draw: ImageDraw, current_phase: dict):
         clues = self.count_revealed_clues(current_phase)
-        font = self.get_font(size=80)  # Increased from 60
+        font = self.get_font(size=60)  # Increased from 60
         counter_text = f"{clues}"
         bbox = draw.textbbox((0, 0), counter_text, font=font)
         text_width = bbox[2] - bbox[0]
@@ -175,7 +175,7 @@ class ShortsGenerator:
                 
                 draw = ImageDraw.Draw(frame)
                 text = "How many clues did you need?"
-                font = self.get_font(size=80)  # Increased from 60
+                font = self.get_font(size=40)  # Increased from 60
                 bbox = draw.textbbox((0, 0), text, font=font)
                 text_width = bbox[2] - bbox[0]
                 text_x = (self.width - text_width) // 2
@@ -189,8 +189,8 @@ class ShortsGenerator:
     
     def draw_movie_info(self, draw: ImageDraw, base_frame: Image, movie: Movie, y_pos: int):
         title_y = y_pos + (self.row_height // 2) - 15
-        font = self.get_font(size=5000)  # Increased from 30
-        title_font = self.get_font(size=6000)  # Increased from 40
+        font = self.get_font(size=30)  # Increased from 30
+        title_font = self.get_font(size=40)  # Increased from 40
         
         # Draw box office
         box_office_text = movie.get_display_box_office()
@@ -239,35 +239,41 @@ class ShortsGenerator:
         draw.text((x + width//4, y + height//3), "?",
                  fill=(150, 150, 150), font=self.get_font(size=font_size))
     
-    def get_font(self, size=30000):
-        # Ensure size is actually used when loading fonts
-        try:
-            font = ImageFont.truetype("Arial.ttf", size)
-            # Verify the font size matches what was requested
-            test_text = "X"
-            bbox = font.getbbox(test_text)
-            actual_height = bbox[3] - bbox[1]
-            if abs(actual_height - size) > 2:  # Allow small rounding differences
-                # Adjust size until we get the desired height
-                adjustment = size / actual_height
-                size = int(size * adjustment)
-                font = ImageFont.truetype("Arial.ttf", size)
-            return font
-        except:
-            try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-                # Same size verification for DejaVu
-                test_text = "X"
-                bbox = font.getbbox(test_text)
-                actual_height = bbox[3] - bbox[1]
-                if abs(actual_height - size) > 2:
-                    adjustment = size / actual_height
-                    size = int(size * adjustment)
-                    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
-                return font
-            except:
-                # For default font, we can't control size
-                return ImageFont.load_default()
+    def get_font(self, size=30):
+    # Always use the default font since TrueType isn't available
+        default_font = ImageFont.load_default()
+        
+        # Calculate a scaling factor based on desired size
+        base_size = 10  # approximate default font size
+        scale = max(1, size / base_size)
+        
+        # Instead of trying to resize the font, we'll modify the text position
+        # and size when drawing. We can do this by wrapping default_font in a class
+        class ScaledFont:
+            def __init__(self, font, scale):
+                self.font = font
+                self.scale = scale
+        
+            def getbbox(self, text, *args, **kwargs):
+                # Handle all the extra parameters that PIL might pass
+                bbox = self.font.getbbox(text, *args, **kwargs)
+                return tuple(int(x * self.scale) for x in bbox)
+            
+            def getsize(self, text, *args, **kwargs):
+                bbox = self.getbbox(text, *args, **kwargs)
+                return bbox[2] - bbox[0], bbox[3] - bbox[1]
+            
+            def getmask(self, text, *args, **kwargs):
+                return self.font.getmask(text, *args, **kwargs)
+            
+            def getlength(self, text, *args, **kwargs):
+                return self.font.getlength(text, *args, **kwargs) * self.scale
+            
+            # Add any other font methods that might be called
+            def __getattr__(self, name):
+                return getattr(self.font, name)
+        
+        return ScaledFont(default_font, scale)
     
 
 
@@ -286,7 +292,7 @@ class ShortsGenerator:
         
         if show_descriptor and poster_index >= 0:
             # Use a more reasonable font size
-            descriptor_font = self.get_font(size=260)  # Adjusted from 2060
+            descriptor_font = self.get_font(size=50)  # Adjusted from 2060
             
             # Calculate text position to align with poster top
             text_y = y_pos + 10  # Small padding from top of poster
@@ -458,8 +464,8 @@ class ShortsGenerator:
             sys.stdout.write(f"\rProgress: {progress*100:.1f}%")
             sys.stdout.flush()
 if __name__ == "__main__":
-    movie1 = Movie("Moana 2", "2024", "100M", "85%", "90%","")
-    movie2 = Movie("The Matrix", "2023", "150M", "75%", "80%","")
+    movie1 = Movie("role models", "2024", "100M", "85%", "90%","")
+    movie2 = Movie("Prestige", "2023", "150M", "75%", "30%","")
     movie3 = Movie("Alien", "2022", "200M", "95%", "100%","")
     movie4 = Movie("Red", "2021", "120M", "41%", "85%","")
     movie5 = Movie("Moana", "2020", "180M", "90%", "95%","")
@@ -478,4 +484,4 @@ if __name__ == "__main__":
         sys.stdout.flush()
 
     generator = ShortsGenerator(duration=20, title_phase_percentage=30)
-    generator.generate_video(actor, movies_with_descriptors, "output.mp4", update_progress)
+    generator.generate_video(actor, movies_with_descriptors, "output5.mp4", update_progress)
