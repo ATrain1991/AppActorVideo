@@ -1,5 +1,5 @@
 from io import BytesIO
-from moviepy.editor import VideoFileClip, TextClip, ImageClip, ColorClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, TextClip, ImageClip, ColorClip, CompositeVideoClip, AudioFileClip
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from dataclasses import dataclass
@@ -8,6 +8,7 @@ import os
 import sys
 from Actor import Actor
 from Movie import Movie
+from sound_manager import SoundManager
 
 class ShortsGenerator:
     def __init__(self, width=1080, height=1920, duration=15, fps=60, title_phase_percentage=35):
@@ -38,6 +39,9 @@ class ShortsGenerator:
         self.poster_fullscreen_duration = min(0.2, self.poster_reveal_duration * 0.3)
         
         self.breakpoints = self.calculate_breakpoints()
+        
+        # Initialize sound manager
+        self.sound_manager = SoundManager("")
     
     def calculate_breakpoints(self):
         breakpoints = []
@@ -209,7 +213,7 @@ class ShortsGenerator:
         draw.text((current_x - score_width - 10, title_y), popcorn_score, fill=(255, 255, 255), font=font)
         self.draw_score(draw, base_frame, current_x, title_y,
                        movie.get_popcornmeter_int(), "",  # Empty string since we draw score separately
-                       "icons/FreshPopcorn.png", "icons/RottenPopcorn.png")
+                       "icons/FreshPopcornmeter.png", "icons/RottenPopcornmeter.png")
         
         current_x -= 180  # Increased spacing
         
@@ -220,7 +224,7 @@ class ShortsGenerator:
         draw.text((current_x - score_width - 10, title_y), tomato_score, fill=(255, 255, 255), font=font)
         self.draw_score(draw, base_frame, current_x, title_y,
                        movie.get_tomatometer_int(), "",  # Empty string since we draw score separately
-                       "icons/FreshTomato.png", "icons/RottenTomato.png")
+                       "icons/FreshTomatometer.png", "icons/RottenTomatometer.png")
         
         # Draw title
         draw.text((self.poster_width + 40, title_y), movie.get_title(),
@@ -393,6 +397,11 @@ class ShortsGenerator:
         clip = ColorClip(size=(self.width, self.height), color=self.background_color, duration=self.duration)
         clip = clip.set_make_frame(make_frame)
         
+        # Add background music
+        background_music = self.sound_manager.load_background_music("soundclips/background.mp3",self.duration)
+        if background_music:
+            clip = clip.set_audio(background_music)
+        
         # Common video settings
         bitrate = "15000k"  # Adjust based on your quality needs
         
@@ -417,7 +426,7 @@ class ShortsGenerator:
                 fps=self.fps,
                 codec='libx264',
                 ffmpeg_params=ffmpeg_params,
-                audio=False,
+                audio_codec='aac',
                 threads=4  # Adjust based on your CPU
             )
             return
@@ -434,7 +443,7 @@ class ShortsGenerator:
                     codec='libx264',
                     preset='medium',
                     bitrate=bitrate,
-                    audio=False
+                    audio_codec='aac'
                 )
                 return
                 
